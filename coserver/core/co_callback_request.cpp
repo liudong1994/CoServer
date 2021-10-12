@@ -64,7 +64,7 @@ void CoCallbackRequest::request_read(CoRequest* request)
             break;
         }
 
-        // 增加缓冲区 有效数据长度s
+        // 增加缓冲区 有效数据长度
         int32_t expandSize = ret;
         ret = coBuffer->buffer_size_expand(expandSize);
         if (CO_OK != ret) {

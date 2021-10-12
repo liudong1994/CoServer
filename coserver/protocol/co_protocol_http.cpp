@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "protocol/co_protocol_http.h"
+#include "base/co_log.h"
 
 
 namespace coserver 
@@ -165,6 +166,69 @@ int32_t parse_content(CoProtocolHttp* message, const void* buffer, int32_t len)
     return parsedLen;
 }
 
+int32_t parse_content_chunked(CoProtocolHttp* message, const void* oribuffer, int32_t orilen)
+{
+    int32_t parsedLen = 0;
+    char* buffer = (char*)oribuffer;
+    int32_t len = orilen;
+
+    while (1) {
+        char* pos = (char*)memchr(buffer, '\n', len);
+        if (NULL == pos) {
+            return parsedLen;  // 未找到\n 数据不足
+        }
+
+        if (pos == buffer || *(--pos) != '\r') {
+            return -1;
+        }
+
+        // calc chunked size
+        int32_t chunkedSize = 0;
+        for (char* s = buffer; s < pos; ++s) {
+            char ch = *s;
+
+            if (ch >= '0' && ch <= '9') {
+                chunkedSize = chunkedSize * 16 + (ch - '0');
+                continue ;
+            }
+
+            char c = ch | 0x20;
+            if (c >= 'a' && c <= 'f') {
+                chunkedSize = chunkedSize * 16 + (c - 'a' + 10);
+                continue ;
+            }
+
+            return -1;
+        }
+
+        pos += 2;   // skip header \r\n
+        chunkedSize += 2;  // chunk body \r\n
+        int32_t chunkedHeaderLen = pos - buffer;
+
+        if (len < chunkedHeaderLen + chunkedSize) {
+#ifdef CO_LOG_HTTP_DEBUG
+            CO_SERVER_LOG_DEBUG("http parse chunked not enough data, orilen:%d len:%d headerlen:%d chunkedsize:%d", orilen, len, chunkedHeaderLen, chunkedSize);
+#endif
+            return parsedLen;
+        }
+        parsedLen += chunkedHeaderLen + chunkedSize;
+
+        // chunked结束标识  2 -> \r\n
+        if (2 == chunkedSize) {
+            // chunked数据读取完毕
+            message->m_parseStatus = eCompleted;
+            return parsedLen;
+        }
+
+        // 读取到有效数据
+        message->append_content(((char*)pos), chunkedSize - 2); // no need end \r\n
+
+        len = orilen - parsedLen;
+        buffer = (char *)oribuffer + parsedLen;
+    }
+
+    return parsedLen;
+}
 
 void CoProtocolHttp::set_msgstatus(int32_t status)
 {

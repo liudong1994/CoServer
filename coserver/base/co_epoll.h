@@ -33,7 +33,7 @@ class CoEpoll
 {
 public:
     CoEpoll();
-    virtual ~CoEpoll();
+    ~CoEpoll();
 
     int32_t init(int32_t maxConnSizes, int32_t eventSize = 256);
 
