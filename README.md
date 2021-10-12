@@ -63,6 +63,7 @@ g++ tutorial.cpp -g -std=c++11 -lcoserver -lpthread -ldl -L/usr/local/lib64 -I/u
   >
   > 解决方案1:
   > hook pthread_mutex_lock, 尝试pthread_mutex_trylock, 如果失败 等待一定时间后继续尝试pthread_mutex_trylock, 直到成功加锁.
+  >
   > 解决方案2:
   > hook pthread_mutex_lock和pthread_mutex_unlock, 尝试pthread_mutex_trylock, 如果失败 将mutex全局存储, 然后等待一定时间后继续尝试pthread_mutex_trylock, 在此期间 如果mutex  pthread_mutex_unlock, 则直接唤醒之前最开始pthread_mutex_lock的mutex继续执行
   > 这里trylock失败是等待一段时间仍然继续尝试trylock, 是因为多线程lock和unlock容易情况较多, 很难全部捕获并全局处理(或者代价较大). 有可能线程1 trylock失败, 在全局存储mutex等待unlock之前, 线程2 unlock锁, 但是线程1还未等待就绪, 这个时候再切换回线程1 全局存储mutex成功, 等待锁unlock, 此时就产生了死锁. 
@@ -91,6 +92,10 @@ g++ tutorial.cpp -g -std=c++11 -lcoserver -lpthread -ldl -L/usr/local/lib64 -I/u
 - 支持detach请求（在coserver线程中）
 - 支持多server监听配置
 - 支持多线程
+
+#### v1.1
+
+- 协议: http支持chunked
 
 
 ## ToDo
