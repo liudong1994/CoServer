@@ -168,6 +168,8 @@ static pthread_mutex_unlock_t fnPthreadMutexUnlock = NULL;
 
 int32_t connect(int32_t socketFd, const struct sockaddr* addr, socklen_t addrlen)
 {
+    if (!fnConnect) init_coroutine_hook();
+    
     // 判断线程私有变量是否有cycle 确定是否需要hook 
     CoThreadLocalInfo* threadInfo = GET_TLS();
     if (threadInfo->m_coCycle == NULL) {
