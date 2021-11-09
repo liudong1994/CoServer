@@ -33,7 +33,126 @@ g++ tutorial.cpp -g -std=c++11 -lcoserver -lpthread -ldl -L/usr/local/lib64 -I/u
 
 
 
-### 一、设计思路
+
+
+### 一、示例
+
+------
+
+下面是启动http服务，打印请求信息，填充响应头及包体 相关代码。
+
+
+
+源文件 server_http.cpp：
+
+```c++
+#include "coserver/core/co_server.h"
+#include "coserver/core/co_request.h"
+
+using namespace coserver;
+
+int BusinessProcess(CoUserHandlerData* requestData);
+int BusinessDestroy(CoUserHandlerData* requestData);
+
+
+int main()
+{
+    CoServer coServer;
+    coServer.add_user_handlers("server", BusinessProcess, BusinessDestroy);
+    if (CO_OK != coServer.run_server("./coserver.conf")) {
+        fprintf(stdout, "coserver init failed\n");
+        return -1;
+    }
+
+    coServer.shut_down();
+    fprintf(stdout, "coserver runforever complete\n");
+    return 0;
+}
+
+int BusinessProcess(CoUserHandlerData* requestData)
+{
+    CoProtocol* protocol = requestData->m_protocol;
+
+    // http request info
+    CoHTTPRequest* httpReq = (CoHTTPRequest* )(protocol->get_reqmsg());
+
+    fprintf(stderr, "http request method:%s url:%s clientip:%s\n", httpReq->get_method().c_str(), httpReq->get_url().c_str(), protocol->get_clientip().c_str());
+
+    fprintf(stderr, "http request all params\n");
+    const std::unordered_map<std::string, std::string> &requestAllParam = httpReq->get_allparam();
+    for (auto &param : requestAllParam) {
+        fprintf(stderr, "%s: %s\n", param.first.c_str(), param.second.c_str());
+    }
+    
+    fprintf(stderr, "http request all headers\n");
+    const std::unordered_map<std::string, std::string> &requestAllHeader = httpReq->get_allheader();
+    for (auto &param : requestAllHeader) {
+        fprintf(stderr, "%s: %s\n", param.first.c_str(), param.second.c_str());
+    }
+
+    fprintf(stderr, "http request body:%s\n", httpReq->get_msgbody().c_str());
+
+
+    // http response
+    CoHTTPResponse* httpResp = (CoHTTPResponse* )(protocol->get_respmsg());
+    // httpResp->set_statuscode(200);  // 默认200
+    httpResp->add_header("coserver-test", "test,testdata");
+    std::string content = "coserver test content data";
+    httpResp->append_content(content);
+
+    return 0;
+}
+
+int BusinessDestroy(CoUserHandlerData* requestData)
+{
+    fprintf(stdout, "business handler destroy\n");
+}
+```
+
+
+
+配置文件 coserver.conf：
+
+```shell
+conf {
+    log_level 2;                #日志级别 1-debug 2-info 3-warn 4-error 5-fatal
+    worker_threads 1;           #工作线程数量
+}
+
+server {
+    listen_port  15678;         #服务监听端口
+    max_connections 256;        #系统最大连接数
+
+    read_timeout 5000;          #客户端消息读写超时时间 (ms)
+    write_timeout 5000;         #客户端消息读写超时时间 (ms)
+    keepalive_timeout 120000;   #客户端keepalive时间 (ms)
+    
+    server_type 2;              #1-tcp 2-http
+    handler_name server;        #处理函数名称
+}
+```
+
+
+
+编译代码：
+
+```shell
+g++ server_http.cpp -g -oserver_http -std=c++11 -lcoserver -lpthread -ldl -L/usr/local/lib64 -I/usr/local/include/coserver
+```
+
+
+
+模拟请求：
+
+```shell
+curl -v -d"body_123" "http://127.0.0.1:15678/ready?a=b&c=d"
+```
+
+
+
+
+
+### 二、设计思路
 
 ------
 
@@ -46,7 +165,10 @@ g++ tutorial.cpp -g -std=c++11 -lcoserver -lpthread -ldl -L/usr/local/lib64 -I/u
 - 子请求层级：目前支持一层子请求，不支持子请求继续产生子请求
 
 
-### 二、注意事项
+
+
+
+### 三、注意事项
 
 ------
 
@@ -80,7 +202,11 @@ g++ tutorial.cpp -g -std=c++11 -lcoserver -lpthread -ldl -L/usr/local/lib64 -I/u
 
   > 为了符合函数功能, 在 mutex加锁成功前/sleep超时前, 其他错误（网络异常/处理超时）不会影响连接上的请求.
 
-### 三、版本
+
+
+
+
+### 四、版本
 
 ------
 
@@ -98,6 +224,9 @@ g++ tutorial.cpp -g -std=c++11 -lcoserver -lpthread -ldl -L/usr/local/lib64 -I/u
 - 协议: http支持chunked
 
 
+
+
+
 ## ToDo
 
 1、coroutine use boost, add config coroutine
@@ -108,4 +237,6 @@ g++ tutorial.cpp -g -std=c++11 -lcoserver -lpthread -ldl -L/usr/local/lib64 -I/u
 
 - 请求单独协程?
 - 是否有必要，upstream有keepalive
+
+
 
