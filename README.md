@@ -16,9 +16,11 @@ $ sudo make install
 $ make FLAGS="-DCO_DEBUG"
 # or http debug
 $ make FLAGS="-DCO_LOG_HTTP_DEBUG"
-# or hook mutex
+# or hook select(one socket)
+$ make FLAGS="-DCO_HOOK_SELECT"
+# or hook mutex, WARN: default mutex sleep 100ms
 $ make FLAGS="-DCO_HOOK_MUTEX"
-# or hook mutex && use mutex sleep
+# or hook mutex && use mutex sleep, WARN: default mutex sleep 100ms
 $ make FLAGS="-DCO_HOOK_MUTEX -DCO_MUTEX_SLEEP"
 #
 # make install
@@ -222,7 +224,8 @@ curl -v -d"body_123" "http://127.0.0.1:15678/ready?a=b&c=d"
 #### v1.1
 
 - 协议: http支持chunked
-
+- hook: 支持select
+- bug fix
 
 
 

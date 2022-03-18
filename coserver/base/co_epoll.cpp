@@ -195,7 +195,7 @@ int32_t CoEpoll::process_events(uint32_t timerMs)
         }
 
         uint32_t revents = m_events[i].events;
-        CO_SERVER_LOG_DEBUG("(cid:%u) epoll index:%d ev:%u u64:%lu", connection->m_connId, i, revents, m_events[i].data.u64);
+        CO_SERVER_LOG_DEBUG("(cid:%u) epoll index:%d size:%d ev:%u u64:%lu", connection->m_connId, i, epollSize, revents, m_events[i].data.u64);
         if (revents & (EPOLLERR|EPOLLHUP)) {
             CO_SERVER_LOG_WARN("(cid:%u) epoll index:%d error on ev:%u u64:%lu", connection->m_connId, i, revents, m_events[i].data.u64);
         }

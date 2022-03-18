@@ -255,7 +255,7 @@ void CoConnectionPool::free_connection(CoConnection* connection)
         connection->m_coTcp->tcp_close();
 
     } else {
-        CO_SERVER_LOG_WARN("connection socket already close");
+        CO_SERVER_LOG_WARN("connection socket:%d already close", socketFd);
     }
 
     // cleanup
