@@ -227,6 +227,7 @@ curl -v -d"body_123" "http://127.0.0.1:15678/ready?a=b&c=d"
 - hook: 支持select
 - bug fix
 
+#### v1.2
 
 
 
