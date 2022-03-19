@@ -162,7 +162,7 @@ int32_t CoEpoll::process_events(uint32_t timerMs)
             return CO_OK;
         }
 
-        CO_SERVER_LOG_WARN("epoll_wait returned no events without timeout");
+        CO_SERVER_LOG_WARN("epoll_wait return no events without timeout");
         return CO_ERROR;
     }
 
@@ -170,20 +170,34 @@ int32_t CoEpoll::process_events(uint32_t timerMs)
     CoCycle* cycle = threadInfo->m_coCycle;
 
     // process events
-    for (int32_t i = 0; i<epollSize; ++i) {
+    for (int32_t i=0; i<epollSize; ++i) {
         uint32_t connId = GET_U64_HIGH32(m_events[i].data.u64);
         uint32_t connVersion = GET_U64_LOW32(m_events[i].data.u64);
 
         CoConnection* connection = cycle->m_connectionPool->get_connection_accord_id(connId);
         if (connection->m_version != connVersion) {
-            CO_SERVER_LOG_FATAL("(cid:%u) epoll stale event, old version:%d  now version:%d", connection->m_connId, connVersion, connection->m_version);
+            /*
+                背景:
+                    在处理数组前面连接的时候, 将数组后面连接也处理了, 导致再处理数组后面连接时, 其实已经处理过了, 导致version不一致
+
+                场景举例: 
+                    1. 连接1在执行业务逻辑时, 遇到阻塞socket, 协程阻塞在block socket上, 切出协程
+                    2. block socket响应数据, 同时 原始连接1收到了断开连接的数据
+                    3. epoll_wait响应, block socket数据消息在数组0中, 连接1断开消息在数组1中
+                    4. 此时, 先处理数组0消息, block socket处理完毕, 业务正常处理完毕, 连接1正常处理完毕, 连接1 version++, 重新注册到epoll中
+                    5. 接着处理数组1消息, 因为还在上一次的epoll_wait中, 所以数据还是老的, 此时 连接1的version还未++, 所以出现此情况
+
+                解决:
+                    忽略当前通知即可, 因为在第四步重新注册了epoll, 即使ET模式下 (因为socket重新注册), epoll还会再处理一遍socket上的数据, 继续通知
+            */
+            CO_SERVER_LOG_ERROR("(cid:%u) epoll index:%d size:%d stale event, old version:%d  now version:%d", connection->m_connId, i, epollSize, connVersion, connection->m_version);
             continue;
         }
 
         uint32_t revents = m_events[i].events;
-        CO_SERVER_LOG_DEBUG("(cid:%u) epoll ev:%u u64:%lu", connection->m_connId, revents, m_events[i].data.u64);
+        CO_SERVER_LOG_DEBUG("(cid:%u) epoll index:%d size:%d ev:%u u64:%lu", connection->m_connId, i, epollSize, revents, m_events[i].data.u64);
         if (revents & (EPOLLERR|EPOLLHUP)) {
-            CO_SERVER_LOG_WARN("(cid:%u) epoll_wait error on ev:%u u64:%lu", connection->m_connId, revents, m_events[i].data.u64);
+            CO_SERVER_LOG_WARN("(cid:%u) epoll index:%d error on ev:%u u64:%lu", connection->m_connId, i, revents, m_events[i].data.u64);
         }
 
         if ((revents & (EPOLLERR|EPOLLHUP)) && (revents & (EPOLLIN|EPOLLOUT)) == 0) {

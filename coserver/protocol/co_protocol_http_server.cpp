@@ -150,7 +150,6 @@ int32_t CoProtocolHttpServer::decode(CoBuffer* coBuffer)
 
     // parse content
     if(eContent == reqMsg->m_parseStatus) {
-        // todo: http chunked
         parsedLen += parse_content(reqMsg, ((char*)rawBuffer) + parsedLen, len - parsedLen);
         CO_SERVER_LOG_DEBUG("CoProtocolHttpServer decode CONTENT %s", reqMsg->get_content().c_str());
     }

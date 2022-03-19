@@ -125,14 +125,21 @@ int32_t CoProtocolHttpClient::decode(CoBuffer* coBuffer)
         if('\r' == ch || '\n' == ch) {
             respMsg->m_parseStatus = eContent;
 
-            const std::string &strContentLen = respMsg->get_headervalue(CoProtocolHttp::HEADER_CONTENT_LENGTH);
-            if (!strContentLen.empty()) {
-                respMsg->m_contentRemain = atoi(strContentLen.c_str());
+            const std::string &contentLen = respMsg->get_headervalue(CoProtocolHttp::HEADER_CONTENT_LENGTH);
+            if (!contentLen.empty()) {
+                // content-length
+                respMsg->m_contentRemain = atoi(contentLen.c_str());
                 respMsg->reserve_contentlength(respMsg->m_contentRemain);
+            } else {
+                // chunked
+                const std::string &chunked = respMsg->get_headervalue(CoProtocolHttp::HEADER_TRANSFER_ENCODING);
+                if (!chunked.empty() && chunked == "chunked") {
+                    respMsg->m_contentChunked = 1;
+                }
             }
 
 #ifdef CO_LOG_HTTP_DEBUG
-            CO_SERVER_LOG_DEBUG("CoProtocolHttpClient decode HEADER");
+            CO_SERVER_LOG_DEBUG("CoProtocolHttpClient decode HEADER Content-Lenght:%d chunked:%d", respMsg->m_contentRemain, respMsg->m_contentChunked);
             const std::unordered_map<std::string, std::string> &resp_headers = respMsg->get_allheader();
             for (auto itr=resp_headers.begin(); itr!=resp_headers.end(); ++itr) {
                 CO_SERVER_LOG_DEBUG("headerkey:%s  value:%s", itr->first.c_str(), itr->second.c_str());
@@ -143,8 +150,19 @@ int32_t CoProtocolHttpClient::decode(CoBuffer* coBuffer)
 
     // parse content
     if(eContent == respMsg->m_parseStatus) {
-        // todo http chunked
-        parsedLen += parse_content(respMsg, ((char*)rawBuffer) + parsedLen, len - parsedLen);
+        if (!respMsg->m_contentChunked) {
+            // content-lenght
+            parsedLen += parse_content(respMsg, ((char*)rawBuffer) + parsedLen, len - parsedLen);
+
+        } else {
+            // http chunked
+            int32_t parseRet = parse_content_chunked(respMsg, ((char*)rawBuffer) + parsedLen, len - parsedLen);
+            if (parseRet == -1) {
+                CO_SERVER_LOG_ERROR("CoProtocolHttpClient chunked content parse failed, %.*s", len - parsedLen, ((char*)rawBuffer) + parsedLen);
+                return parseRet;
+            }
+            parsedLen += parseRet;
+        }
     }
 
     if(eCompleted == respMsg->m_parseStatus) {

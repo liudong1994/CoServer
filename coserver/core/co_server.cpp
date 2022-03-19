@@ -159,7 +159,7 @@ int32_t CoServer::shut_down()
     }
     m_workerThreads.clear();
 
-    return 0;
+    return CO_OK;
 }
 
 }

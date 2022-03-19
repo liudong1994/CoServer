@@ -127,15 +127,16 @@ void CoCallbackUpstream::upstream_read(CoConnection* connection)
         return co_defer_return(upstream_finalize(request, CO_ERROR));
     }
 
-    // 申请接下来的缓冲区空间
-    int32_t ret = coBuffer->buffer_expand(BUFFER_SIZE_4096);
-    if (CO_OK != ret) {
-        CO_SERVER_LOG_ERROR("(cid:%u rid:%u) upstream buffer expand:%d failed", connection->m_connId, request->m_requestId, BUFFER_SIZE_4096); 
-        return co_defer_return(upstream_finalize(request, CO_ERROR));
-    }
-
     // start read data
+    int32_t ret = CO_OK;
     for ( ; ; ) {
+        // 申请接下来的缓冲区空间
+        ret = coBuffer->buffer_expand(BUFFER_SIZE_4096);
+        if (CO_OK != ret) {
+            CO_SERVER_LOG_ERROR("(cid:%u rid:%u) upstream buffer expand:%d failed", connection->m_connId, request->m_requestId, BUFFER_SIZE_4096); 
+            return co_defer_return(upstream_finalize(request, CO_ERROR));
+        }
+
         ret = connection->m_coTcp->tcp_read(coBuffer->get_bufferdata() + coBuffer->get_buffersize(), BUFFER_SIZE_4096);
         // 不需要处理EAGAIN  hook保证返回数据或出错
         if (ret < CO_OK) {
@@ -144,8 +145,10 @@ void CoCallbackUpstream::upstream_read(CoConnection* connection)
         }
 
         // 增加缓冲区 有效数据长度
-        if (CO_OK != coBuffer->buffer_size_expand(ret)) {
-            CO_SERVER_LOG_ERROR("(cid:%u rid:%u) upstream coBuffer expand size:%d failed", connection->m_connId, request->m_requestId, ret);
+        int32_t expandSize = ret;
+        ret = coBuffer->buffer_size_expand(expandSize);
+        if (CO_OK != ret) {
+            CO_SERVER_LOG_ERROR("(cid:%u rid:%u) upstream coBuffer expand size:%d failed", connection->m_connId, request->m_requestId, expandSize);
             break;
         }
 

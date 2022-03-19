@@ -21,22 +21,22 @@ SUBINC = coserver
 SUBDIR = coserver coserver/base coserver/core coserver/protocol coserver/upstream
 
 #设置VPATH
-INCLUDE = $(foreach n, $(SUBINC), -I$(INC_PATH)/$(n)) 
-SPACE 	=  
+INCLUDE = $(foreach n, $(SUBINC), -I$(INC_PATH)/$(n))
+SPACE 	= 
 VPATH 	= $(subst $(SPACE),, $(strip $(foreach n,$(SUBDIR), $(INC_PATH)/$(n)))) $(OUTPUT_PATH)
 
 C_SOURCES 	= $(notdir $(foreach n, $(SUBDIR), $(wildcard $(INC_PATH)/$(n)/*.c)))
 CPP_SOURCES = $(notdir $(foreach n, $(SUBDIR), $(wildcard $(INC_PATH)/$(n)/*.cpp)))
 
-C_OBJECTS = $(patsubst  %.c,  $(OUTPUT_PATH)/%.o, $(C_SOURCES))
+C_OBJECTS 	= $(patsubst  %.c,  $(OUTPUT_PATH)/%.o, $(C_SOURCES))
 CPP_OBJECTS = $(patsubst  %.cpp,  $(OUTPUT_PATH)/%.o, $(CPP_SOURCES))
 
 CXX_SOURCES = $(CPP_SOURCES) $(C_SOURCES)
-CXX_OBJECTS = $(CPP_OBJECTS) $(C_OBJECTS) 
+CXX_OBJECTS = $(CPP_OBJECTS) $(C_OBJECTS)
 
 
 #all: $(COSERVER_STATIC) $(COSERVER_SHARED)
-all: $(COSERVER_SHARED)
+all: mkdir $(COSERVER_SHARED)
 
 $(COSERVER_STATIC):$(CXX_OBJECTS)
 	ar cr -o $@ $(foreach n, $(CXX_OBJECTS), $(n)) $(foreach n, $(OBJS), $(n))
@@ -45,7 +45,7 @@ $(COSERVER_STATIC):$(CXX_OBJECTS)
 	#******************************************************************************#
 
 $(COSERVER_SHARED):$(CXX_OBJECTS)
-	$(CXX) -shared -o $@ $(foreach n, $(CXX_OBJECTS), $(n)) $(foreach n, $(OBJS), $(n))  $(LDFLAGS) 
+	$(CXX) -shared -o $@ $(foreach n, $(CXX_OBJECTS), $(n)) $(foreach n, $(OBJS), $(n))  $(LDFLAGS)
 	#******************************************************************************#
 	#                          build shared successful !                           #
 	#******************************************************************************#

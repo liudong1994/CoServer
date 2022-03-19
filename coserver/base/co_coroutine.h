@@ -41,7 +41,7 @@ class CoCoroutineMain
 {
 public:
     CoCoroutineMain();
-    virtual ~CoCoroutineMain();
+    ~CoCoroutineMain();
 
     int32_t init(uint32_t sharedStackSize);
 

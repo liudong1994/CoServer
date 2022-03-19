@@ -2,7 +2,10 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 #include <pthread.h>
+#include <string>
 #include "base/co_hook.h"
 #include "base/co_common.h"
 #include "base/co_log.h"
@@ -11,6 +14,8 @@
 
 namespace coserver
 {
+
+void get_socket_ipport(int32_t socketFd, std::string &localIP, int32_t &localPort, std::string &remoteIP, int32_t &remotePort);
 
 // socket移除非阻塞属性
 void socket_remove_nonblock(int32_t socketFd, int32_t flags)
@@ -97,7 +102,11 @@ static ssize_t read_write_mode(int32_t socketFd, OriginFn originFn, const char* 
         }
 
         if (ret != CO_OK) {
-            CO_SERVER_LOG_WARN("(cid:%u) hook readwrite yield/resume failed, ret:%ld socketfd:%d", connection->m_connId, ret, socketFd);
+            std::string localIP, remoteIP;
+            int32_t localPort = 0, remotePort = 0;
+            get_socket_ipport(socketFd, localIP, localPort, remoteIP, remotePort);
+
+            CO_SERVER_LOG_WARN("(cid:%u) hook readwrite yield/resume failed, ret:%ld socketfd:%d(local ip:%s port:%d, remote ip:%s port:%d)", connection->m_connId, ret, socketFd, localIP.c_str(), localPort, remoteIP.c_str(), remotePort);
 
             if (ret == CO_TIMEOUT) {
                 errno = EAGAIN;
@@ -157,6 +166,11 @@ static sleep_t fnSleep = NULL;
 typedef int32_t(*usleep_t)(useconds_t usec);
 static usleep_t fnUsleep = NULL;
 
+#if (CO_HOOK_SELECT)
+typedef int32_t(*select_t)(int32_t nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout);
+static select_t fnSelect = NULL;
+#endif
+
 #if (CO_HOOK_MUTEX)
 typedef int32_t(*pthread_mutex_lock_t)(pthread_mutex_t* mutex);
 static pthread_mutex_lock_t fnPthreadMutexLock = NULL;
@@ -168,6 +182,8 @@ static pthread_mutex_unlock_t fnPthreadMutexUnlock = NULL;
 
 int32_t connect(int32_t socketFd, const struct sockaddr* addr, socklen_t addrlen)
 {
+    if (!fnConnect) init_coroutine_hook();
+    
     // 判断线程私有变量是否有cycle 确定是否需要hook 
     CoThreadLocalInfo* threadInfo = GET_TLS();
     if (threadInfo->m_coCycle == NULL) {
@@ -388,6 +404,97 @@ int32_t usleep(useconds_t usec)
     return CO_OK;
 }
 
+#if (CO_HOOK_SELECT)
+// 针对第三方select, 如果只有一个socket在里面 也进行hook操作, 可能是connect超时用法 进行非阻塞处理
+int32_t select(int32_t nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout)
+{
+    if (!fnSelect) init_coroutine_hook();
+
+    // 判断线程私有变量是否有cycle 确定是否需要hook
+    CoThreadLocalInfo* threadInfo = GET_TLS();
+    if (threadInfo->m_coCycle == NULL) {
+        return fnSelect(nfds, readfds, writefds, exceptfds, timeout);
+    }
+
+    CoConnection* connection = threadInfo->m_curConnection;
+    if (connection->m_flagDying) {
+        // 连接正准备销毁 不在执行相关的网络操作
+        CO_SERVER_LOG_WARN("(cid:%u) hook select connection dying", connection->m_connId);
+        return CO_ERROR;
+    }
+
+    int32_t timeoutMs = -1;
+    if (timeout) {
+        timeoutMs = timeout->tv_sec * 1000 + timeout->tv_usec / 1000;
+    }
+
+    if (timeoutMs == 0) {
+        return fnSelect(nfds, readfds, writefds, exceptfds, timeout);
+    }
+
+    if (!nfds && !readfds && !writefds && !exceptfds && timeout) {
+        // 没有socket, 只需要设置超时时间
+        int32_t ret = CoDispatcher::yield_timer(connection, timeoutMs);
+        if (CO_OK != ret) {
+            CO_SERVER_LOG_ERROR("(cid:%u) hook select sleep failed, ms:%u ret:%d", connection->m_connId, timeoutMs, ret);
+            return CO_ERROR;
+        }
+        return CO_OK;
+    }
+
+    int32_t selectSocket = -1;
+    int32_t socketEvents = -1;
+    std::pair<fd_set*, uint32_t> fdSets[3] = {
+        {readfds, CO_EVENT_READ},
+        {writefds, CO_EVENT_WRITE},
+        {exceptfds, CO_EVENT_HUP}
+    };
+
+    nfds = std::min<int32_t>(nfds, FD_SETSIZE);
+    for (int32_t i=0; i<nfds; ++i) {
+        // 3 => read write except
+        for (int32_t si=0; si<3; ++si) {
+            if (!fdSets[si].first)
+                continue;
+
+            if (!FD_ISSET(i, fdSets[si].first))
+                continue;
+
+            // i socket已经设置
+            if (selectSocket == -1 && socketEvents == -1) {
+                selectSocket = i;
+                socketEvents = fdSets[si].second;
+
+            } else {
+                // select设置了多个socket, 实现较复杂, 不hook 继续调用放处理
+                return fnSelect(nfds, readfds, writefds, exceptfds, timeout);
+            }
+        }
+    }
+
+    // 因为不对socket做真正读写处理, 所以这里不检查和设置socket的 非阻塞
+
+    CO_SERVER_LOG_DEBUG("(cid:%u) hook select, third socket IO yield, socketfd:%d event:%d timeout:%dms", connection->m_connId, selectSocket, socketEvents, timeoutMs);
+    int32_t ret = CoDispatcher::yield_thirdsocket(selectSocket, socketEvents, timeoutMs, connection, SOCKET_PHASE_CONNECT);
+    if (ret != CO_OK) {
+        CO_SERVER_LOG_WARN("(cid:%u) hook select yield/resume failed, ret:%d socketfd:%d)", connection->m_connId, ret, selectSocket);
+        if (ret == CO_TIMEOUT) {
+            if (readfds) FD_ZERO(readfds);
+            if (writefds) FD_ZERO(writefds);
+            if (exceptfds) FD_ZERO(exceptfds);
+            return 0;
+        }
+        return CO_ERROR;
+    }
+
+    // 成功, 继续非阻塞调用select, 进行相关填充
+    CO_SERVER_LOG_DEBUG("(cid:%u) hook select, epoll async resume, continue origin select, socketfd:%d, ret:%d", connection->m_connId, selectSocket, ret);
+
+    timeval immedaitely = {0, 0};
+    return fnSelect(nfds, readfds, writefds, exceptfds, &immedaitely);
+}
+#endif
+
 #if (CO_HOOK_MUTEX)
 // 第三方阻塞的mutex 防止死锁出现
 int32_t pthread_mutex_lock(pthread_mutex_t* mutex)
@@ -481,17 +588,27 @@ int32_t init_hook()
     fnAccept = (accept_t)dlsym(RTLD_NEXT, "accept");
     fnSleep = (sleep_t)dlsym(RTLD_NEXT, "sleep");
     fnUsleep = (usleep_t)dlsym(RTLD_NEXT, "usleep");
-#if (CO_HOOK_MUTEX)
-    fnPthreadMutexLock = (pthread_mutex_lock_t)dlsym(RTLD_NEXT, "pthread_mutex_lock");
-    fnPthreadMutexUnlock = (pthread_mutex_unlock_t)dlsym(RTLD_NEXT, "pthread_mutex_unlock");
-
-    if (!fnConnect || !fnRead || !fnWrite || !fnReadv || !fnWritev || !fnSend || !fnSendto || !fnSendmsg || !fnAccept || !fnSleep || !fnUsleep || !fnPthreadMutexLock || !fnPthreadMutexUnlock) {
-#else
     if (!fnConnect || !fnRead || !fnWrite || !fnReadv || !fnWritev || !fnSend || !fnSendto || !fnSendmsg || !fnAccept || !fnSleep || !fnUsleep) {
-#endif
         CO_SERVER_LOG_FATAL("coroutine hook syscall failed");
         exit(1);
     }
+
+#if (CO_HOOK_SELECT)
+    fnSelect = (select_t)dlsym(RTLD_NEXT, "select");
+    if (!fnSelect) {
+        CO_SERVER_LOG_FATAL("coroutine hook syscall select failed");
+        exit(1);
+    }
+#endif
+
+#if (CO_HOOK_MUTEX)
+    fnPthreadMutexLock = (pthread_mutex_lock_t)dlsym(RTLD_NEXT, "pthread_mutex_lock");
+    fnPthreadMutexUnlock = (pthread_mutex_unlock_t)dlsym(RTLD_NEXT, "pthread_mutex_unlock");
+    if (!fnPthreadMutexLock || !fnPthreadMutexUnlock) {
+        CO_SERVER_LOG_FATAL("coroutine hook syscall mutex failed");
+        exit(1);
+    }
+#endif
 
     CO_SERVER_LOG_INFO("coroutine hook syscall success");
     return CO_OK;
@@ -501,6 +618,33 @@ void init_coroutine_hook()
 {
     static int32_t isInit = init_hook();
     UNUSED(isInit);
+}
+
+void get_socket_ipport(int32_t socketFd, std::string &localIP, int32_t &localPort, std::string &remoteIP, int32_t &remotePort) 
+{
+    struct sockaddr_in addr;
+    socklen_t addrLen = sizeof(addr);
+    char ipAddr[INET_ADDRSTRLEN];
+
+    // local ip and port
+    memset(&addr, 0, sizeof(addr));
+    if (0 == getsockname(socketFd, (struct sockaddr*)&addr, &addrLen)) {
+        if (addr.sin_family == AF_INET) {
+            localIP = inet_ntop(AF_INET, &addr.sin_addr, ipAddr, sizeof(ipAddr));
+            localPort = ntohs(addr.sin_port);
+        }
+    }
+
+    // remote ip and port
+    memset(&addr, 0, sizeof(addr));
+    if (0 == getpeername(socketFd, (struct sockaddr*)&addr, &addrLen)) {
+        if (addr.sin_family == AF_INET) {
+            remoteIP = inet_ntop(AF_INET, &addr.sin_addr, ipAddr, sizeof(ipAddr));
+            remotePort = ntohs(addr.sin_port);
+        }
+    }
+
+    return ;
 }
 
 }

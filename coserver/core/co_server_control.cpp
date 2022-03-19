@@ -106,7 +106,7 @@ int32_t CoServerControl::init_connection(CoCycle* cycle, int32_t socketFd)
 
     m_curConnectionSize ++;
     cycle->m_dispatcher->m_delayConnections.push(std::make_pair(connection, connection->m_version));
-    CO_SERVER_LOG_DEBUG("accept one client socketfd:%d", socketFd);
+    CO_SERVER_LOG_DEBUG("(cid:%d) accept one client socketfd:%d", connection->m_connId, socketFd);
     return CO_OK;
 }
 

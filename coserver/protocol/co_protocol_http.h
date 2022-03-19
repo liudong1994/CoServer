@@ -52,12 +52,13 @@ public:
     int32_t m_status            = 0;
     int32_t m_parseStatus       = eStartLine;
     int32_t m_contentRemain     = 0;
+    int32_t m_contentChunked    = 0;    // 是否chunked模式
 
 protected:
     std::string m_version       = "HTTP/1.1";
-    int32_t m_contentLength     = 0;       // content length
+    int32_t m_contentLength     = 0;    // content length
 
-    std::string m_content       = "";            // content
+    std::string m_content       = "";   // content
     std::unordered_map<std::string, std::string> m_headers; // headers
 };
 
@@ -116,6 +117,7 @@ int32_t parse_startline(CoHTTPResponse* message, const void* buffer, int32_t len
 int32_t parse_startline(CoHTTPRequest* message, const void* buffer, int32_t len);
 int32_t parse_header(CoProtocolHttp* message, const void* buffer, int32_t len);
 int32_t parse_content(CoProtocolHttp* message, const void* buffer, int32_t len);
+int32_t parse_content_chunked(CoProtocolHttp* message, const void* buffer, int32_t len);
 
 }
 

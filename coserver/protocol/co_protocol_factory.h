@@ -15,7 +15,7 @@ class CoProtocolFactory
 {
 public:
     CoProtocolFactory() {}
-    virtual ~CoProtocolFactory() {}
+    ~CoProtocolFactory() {}
 
     CoProtocol* create_protocol(int32_t protocolType) 
     {

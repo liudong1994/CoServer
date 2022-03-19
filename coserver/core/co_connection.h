@@ -95,7 +95,7 @@ class CoConnectionPool
 public:
     CoConnectionPool(CoCycle* cycle);
     CoConnectionPool() = delete;
-    virtual ~CoConnectionPool();
+    ~CoConnectionPool();
 
     int32_t init(int32_t minConnectionSize, int32_t maxConnectionSize);
     int32_t expand_connections(int32_t expandSize = 16);

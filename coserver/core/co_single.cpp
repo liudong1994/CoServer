@@ -27,7 +27,7 @@ CoSingle* CoSingle::get_instance()
 
 /*
     函数作用: 防止在add_block_mutex中yield_timer后  其他线程unlock锁 异步resume, 导致后续异常问题
-    每次异步resume single时 都find_block_mutex检查一下是否是正的唤醒
+    每次异步resume single时 都find_block_mutex检查一下是否真正的唤醒
 */
 bool CoSingle::find_block_mutex(CoConnection* connection)
 {

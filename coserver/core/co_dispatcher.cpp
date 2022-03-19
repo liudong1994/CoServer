@@ -134,9 +134,10 @@ int32_t CoDispatcher::process_events_and_timers(CoCycle* cycle)
     bool needContinue = false;
     do {
         // 下面三个步骤 可能会出现乱序添加任务 一次性执行完毕后再等待epoll
+        // todo 避免循环次数过多, 后续可以添加循环次数限制
         needContinue = false;
 
-        static auto funcResumeProcess = [&](int type, std::pair<CoConnection*, uint32_t> &coroutineData) {
+        static auto funcResumeProcess = [&](int32_t type, std::pair<CoConnection*, uint32_t> &coroutineData) {
             CoConnection* connection = coroutineData.first;
             uint32_t version = coroutineData.second;
             if (connection->m_version != version) {
