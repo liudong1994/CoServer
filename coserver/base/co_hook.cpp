@@ -472,6 +472,8 @@ int32_t select(int32_t nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfd
         }
     }
 
+    // 因为不对socket做真正读写处理, 所以这里不检查和设置socket的 非阻塞
+
     CO_SERVER_LOG_DEBUG("(cid:%u) hook select, third socket IO yield, socketfd:%d event:%d timeout:%dms", connection->m_connId, selectSocket, socketEvents, timeoutMs);
     int32_t ret = CoDispatcher::yield_thirdsocket(selectSocket, socketEvents, timeoutMs, connection, SOCKET_PHASE_CONNECT);
     if (ret != CO_OK) {
