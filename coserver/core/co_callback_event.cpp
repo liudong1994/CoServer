@@ -15,6 +15,16 @@ int32_t CoCallbackEvent::event_exception(CoConnection* connection)
         return CO_OK;
     }
 
+    // debug
+    if (connection->m_request) {
+        CoRequest* request = connection->m_request;
+        CO_SERVER_LOG_WARN("(cid:%u) connection exception, timedout:%d pendingeof:%d dying:%d, socket ipport:%s, request us start:%lu, diffstart read:%lu process:%lu write:%lu", 
+                            connection->m_connId, connection->m_flagTimedOut, connection->m_flagPendingEof, connection->m_flagDying, connection->m_coTcp->get_ipport().c_str(), request->m_startUs, request->m_readUs, request->m_processUs, request->m_writeUs);
+
+    } else {
+        CO_SERVER_LOG_WARN("(cid:%u) connection exception, timedout:%d pendingeof:%d dying:%d, socket ipport:%s, no request", connection->m_connId, connection->m_flagTimedOut, connection->m_flagPendingEof, connection->m_flagDying, connection->m_coTcp->get_ipport().c_str());
+    }
+
     connection->m_flagDying = 1;
 
     // 针对第三方函数阻塞中时 等待第三方函数返回
